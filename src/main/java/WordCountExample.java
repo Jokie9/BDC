@@ -27,7 +27,7 @@ public class WordCountExample{
         // SPARK SETUP
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        SparkConf conf = new SparkConf(true).setAppName("WordCount");
+        SparkConf conf = new SparkConf(true).setAppName("WordCountExample");
         JavaSparkContext sc = new JavaSparkContext(conf);
         sc.setLogLevel("WARN");
 
