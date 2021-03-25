@@ -20,17 +20,13 @@ for each ProductID contains exactly one pair (ProductID, MNR) where MNR is the m
 The maximum should be computed either using the reduceByKey method or the mapPartitionsToPair/mapPartitions method. (Hint: get inspiration from the WordCountExample program).
 
 4. Print the T products with largest maximum normalized rating, one product per line. (Hint: use a combination of sortByKey and take methods.)
-
 To test your program you can use file input_20K.csv, which contains 20000 reviews. The output on this dataset is shown in file output_20K.txt. For your homework adopt the same output format.
 
 SUBMISSION INSTRUCTIONS. Each group must submit a single file (GxxHW1.java or GxxHW1.py depending on whether you are Java or Python users, where xx is your ID group).
 Only one student per group must submit the files in Moodle Exam using the link provided in the Homework1 section.
 Make sure that your code is free from compiling/run-time errors and that you use the file/variable names in the homework description, otherwise your score will be penalized.
-
 If you have questions about the assignment, contact the teaching assistants (TAs) by email to bdc-course@dei.unipd.it .
 The subject of the email must be "HW1 - Group xx", where xx is your ID group. If needed, a zoom meeting between the TAs and the group will be organized.
-
-
 */
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -40,77 +36,112 @@ import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
+// INPUT FILE: input_20K.csv
+// OUTPUT FILE: output_20K.txt
 
 public class G22HW1 {
 
-        public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException {
 
-            // CHECK INPUT PARAMETERS: K, T, path file
-            if (args.length != 3) {
-                throw new IllegalArgumentException("USAGE: num_partitions num_products file_path");
+        // CHECK INPUT PARAMETERS: K, T, path file
+        if (args.length != 3) {
+            throw new IllegalArgumentException("USAGE: num_partitions num_products file_path");
+        }
+
+        // SPARK SETUP
+        SparkConf conf = new SparkConf(true).setAppName("G22HW1");
+        JavaSparkContext sc = new JavaSparkContext(conf);
+        sc.setLogLevel("WARN");
+
+        // INPUT READING
+        // Read number of partitions
+        int K = Integer.parseInt(args[0]);
+        // Read number of products
+        int T = Integer.parseInt(args[1]);
+        // Read input file and subdivide it into K random partitions
+        JavaRDD<String> RawData = sc.textFile(args[2]).repartition(K).cache();
+
+        // SET GLOBAL VARIABLES
+        String outputFileName = "output_20K.txt";
+
+        JavaPairRDD<String, Long> count;
+        long numdocs, numwords;
+
+
+
+        //MAPREDUCE ALGORITHM
+        count = RawData
+        .flatMapToPair((document) -> {    // <-- MAP PHASE (R1)
+            String[] tokens = document.split(",");
+            HashMap<String, Long> reviews = new HashMap<>();
+            ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
+            System.out.println(tokens[0]);
+            for (String token : tokens) {
+                reviews.put(token, 1L + reviews.getOrDefault(token, 0L));
             }
+            for (Map.Entry<String, Long> e : reviews.entrySet()) {
+            pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+            }
+            return pairs.iterator();
+        })
+        .mapPartitionsToPair((element) -> {    // <-- REDUCE PHASE (R1)
+            HashMap<String, Long> counts = new HashMap<>();
+            while (element.hasNext()){
+            Tuple2<String, Long> tuple = element.next();
+            counts.put(tuple._1(), tuple._2() + counts.getOrDefault(tuple._1(), 0L));
+            }
+            ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
+            for (Map.Entry<String, Long> e : counts.entrySet()) {
+                pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+            }
+            return pairs.iterator();
+        })
+        .groupByKey()     // <-- REDUCE PHASE (R2)
+        .mapValues((it) -> {
+            long sum = 0;
+            for (long c : it) {
+            sum += c;
+            }
+            return sum;
+        }); // Obs: one could use reduceByKey in place of groupByKey and mapValues
+        numwords = count.count();
+        System.out.println("Number of distinct words in the documents = " + numwords);
 
-            // SPARK SETUP
-            SparkConf conf = new SparkConf(true).setAppName("G22HW1");
-            JavaSparkContext sc = new JavaSparkContext(conf);
-            sc.setLogLevel("WARN");
+        // CREATION OF OUTPUT FILE
+        try {
+            File outputFile = new File(outputFileName);
+            if (outputFile.createNewFile()) {
+                System.out.println("File created: " + outputFile.getName());
+            } else {
+                System.out.println("File already exists. It will be overwritten");
+            }
+        } catch (IOException e) {
+            System.out.println("An error occurred.");
+            e.printStackTrace();
+        }
+        try {
+            //DELETING THE CONTENT OF THE FILE IF IT ALREADY EXISTS
+            new FileWriter(outputFileName, false).close();
+            FileWriter myWriter = new FileWriter(outputFileName, true);
+            // FIRST LINE OF THE FILE
+            myWriter.write("INPUT PARAMETERS: K="+K+" T="+T+" file="+args[2]+"\n");
+            // WRITE HERE THE FIRST T PRODUCT WITH THE LARGEST MAXIMUM NORMALIZED RATING (ONE PER LINE)
 
-            // INPUT READING
-            // Read number of partitions
-            int K = Integer.parseInt(args[0]);
-            // Read number of products
-            int T = Integer.parseInt(args[1]);
-            // Read input file and subdivide it into K random partitions
-            JavaRDD<String> docs = sc.textFile(args[2]).repartition(K).cache();
-
-            // SET GLOBAL VARIABLES
-            
-
-
-            //MAPREDUCE ALGORITHM
-            count = docs
-                    .flatMapToPair((document) -> {    // <-- MAP PHASE (R1)
-                        String[] tokens = document.split(" ");
-                        HashMap<String, Long> counts = new HashMap<>();
-                        ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-                        for (String token : tokens) {
-                            counts.put(token, 1L + counts.getOrDefault(token, 0L));
-                        }
-                        for (Map.Entry<String, Long> e : counts.entrySet()) {
-                            pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
-                        }
-                        return pairs.iterator();
-                    })
-                    .mapPartitionsToPair((element) -> {    // <-- REDUCE PHASE (R1)
-                        HashMap<String, Long> counts = new HashMap<>();
-                        while (element.hasNext()){
-                            Tuple2<String, Long> tuple = element.next();
-                            counts.put(tuple._1(), tuple._2() + counts.getOrDefault(tuple._1(), 0L));
-                        }
-                        ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-                        for (Map.Entry<String, Long> e : counts.entrySet()) {
-                            pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
-                        }
-                        return pairs.iterator();
-                    })
-                    .groupByKey()     // <-- REDUCE PHASE (R2)
-                    .mapValues((it) -> {
-                        long sum = 0;
-                        for (long c : it) {
-                            sum += c;
-                        }
-                        return sum;
-                    }); // Obs: one could use reduceByKey in place of groupByKey and mapValues
-            numwords = count.count();
-            System.out.println("Number of distinct words in the documents = " + numwords);
-
-
+            myWriter.close();
+            System.out.println("Successfully wrote to the file.");
+        } catch (IOException e) {
+            System.out.println("An error occurred.");
+            e.printStackTrace();
         }
 
 
     }
+
+
+}
 
