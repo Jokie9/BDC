@@ -68,51 +68,56 @@ public class G22HW1 {
 
         // SET GLOBAL VARIABLES
         String outputFileName = "output_20K.txt";
-
-        JavaPairRDD<String, Long> count;
-        long numdocs, numwords;
-
+        JavaPairRDD<String, Long> product;
 
 
         //MAPREDUCE ALGORITHM
-        count = RawData
-        .flatMapToPair((document) -> {    // <-- MAP PHASE (R1)
-            String[] tokens = document.split(",");
-            HashMap<String, Long> reviews = new HashMap<>();
-            ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-            System.out.println(tokens[0]);
-            for (String token : tokens) {
-                reviews.put(token, 1L + reviews.getOrDefault(token, 0L));
-            }
-            for (Map.Entry<String, Long> e : reviews.entrySet()) {
-            pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
-            }
-            return pairs.iterator();
-        })
-        .mapPartitionsToPair((element) -> {    // <-- REDUCE PHASE (R1)
-            HashMap<String, Long> counts = new HashMap<>();
-            while (element.hasNext()){
-            Tuple2<String, Long> tuple = element.next();
-            counts.put(tuple._1(), tuple._2() + counts.getOrDefault(tuple._1(), 0L));
-            }
-            ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-            for (Map.Entry<String, Long> e : counts.entrySet()) {
-                pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
-            }
-            return pairs.iterator();
-        })
-        .groupByKey()     // <-- REDUCE PHASE (R2)
-        .mapValues((it) -> {
-            long sum = 0;
-            for (long c : it) {
-            sum += c;
-            }
-            return sum;
-        }); // Obs: one could use reduceByKey in place of groupByKey and mapValues
-        numwords = count.count();
-        System.out.println("Number of distinct words in the documents = " + numwords);
+        product = RawData
+                //R1 MAP PHASE: copy of RawData in (UserID, RATE)
+                .flatMapToPair((document) -> {
+                    String[] tokens = document.split(",");
+                    HashMap<String, Long> reviews = new HashMap<>();
+                    ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
+                    System.out.println(tokens[0]);
+                    for (String token : tokens) {
+                        reviews.put(token, 1L + reviews.getOrDefault(token, 0L));
+                    }
+                    for (Map.Entry<String, Long> e : reviews.entrySet()) {
+                        pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+                    }
+                    return pairs.iterator();
+                })
+                //R1 REDUCE PHASE: compute avg for each UserID (no repetition)
+                .mapPartitionsToPair((element) -> {
+                    HashMap<String, Long> counts = new HashMap<>();
+                    while (element.hasNext()){
+                        Tuple2<String, Long> tuple = element.next();
+                        counts.put(tuple._1(), tuple._2() + counts.getOrDefault(tuple._1(), 0L));
+                    }
+                    ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
+                    for (Map.Entry<String, Long> e : counts.entrySet()) {
+                        pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+                    }
+                    return pairs.iterator();
+                })
+                //R2 MAP PHASE: normalize (ProductID, NormRate)
 
-        // CREATION OF OUTPUT FILE
+                //R2 REDUCE PHASE: compute max NormRate for each ProductID (no repetition ID)
+                .groupByKey()
+                .mapValues((rate) -> {
+                    long max = 0;
+                    for (long c : rate) {
+                        if (c>max)
+                                max=c;
+                    }
+                    return max;
+                });
+
+        //Sort pairs by value
+        product=product.sortBy(_._2,false)
+
+
+        // CREATION OF OUTPUT FILE: first T Product
         try {
             File outputFile = new File(outputFileName);
             if (outputFile.createNewFile()) {
@@ -144,4 +149,3 @@ public class G22HW1 {
 
 
 }
-
