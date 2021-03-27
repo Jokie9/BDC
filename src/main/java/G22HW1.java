@@ -68,21 +68,26 @@ public class G22HW1 {
 
         // SET GLOBAL VARIABLES
         String outputFileName = "output_20K.txt";
-        JavaPairRDD<String, Long> product;
+        JavaPairRDD<String, Long> count;
 
 
         //MAPREDUCE ALGORITHM
-        product = RawData
+        count = RawData
                 //R1 MAP PHASE: copy of RawData in (UserID, RATE)
                 .flatMapToPair((document) -> {
+                    String prod="";
+                    String user="";
                     String[] tokens = document.split(",");
-                    HashMap<String, Long> reviews = new HashMap<>();
+                    HashMap<String, Long> rev_prod = new HashMap<>();  //creo due map una che usa come chiave userID e uno il prodotto
+                    HashMap<String, Long> rev_user = new HashMap<>();
                     ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-                    System.out.println(tokens[0]);
                     for (String token : tokens) {
-                        reviews.put(token, 1L + reviews.getOrDefault(token, 0L));
+                        prod=token;
+                        user=token;
+                        rev_prod.put(prod, 1L + rev_prod.getOrDefault(token, 0L));
+                        rev_user.put(, 1L + rev_user.getOrDefault(token, 0L));
                     }
-                    for (Map.Entry<String, Long> e : reviews.entrySet()) {
+                    for (Map.Entry<String, Long> e : reviews.entrySet()) {   //???????
                         pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
                     }
                     return pairs.iterator();
@@ -101,7 +106,12 @@ public class G22HW1 {
                     return pairs.iterator();
                 })
                 //R2 MAP PHASE: normalize (ProductID, NormRate)
-
+                //usare .filter(f) per scegliere UserID e calcolare rate-avg in un ciclo 
+                .mapPartitionsToPair((norm) -> {
+                    HashMap<String, Long> normpair = new HashMap<>();
+                    
+                    }
+                })
                 //R2 REDUCE PHASE: compute max NormRate for each ProductID (no repetition ID)
                 .groupByKey()
                 .mapValues((rate) -> {
@@ -114,7 +124,7 @@ public class G22HW1 {
                 });
 
         //Sort pairs by value
-        product=product.sortBy(_._2,false);
+        count=count.sortBy(pairs._2,false);
 
 
         // CREATION OF OUTPUT FILE: first T Product
