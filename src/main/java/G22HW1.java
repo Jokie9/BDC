@@ -114,7 +114,7 @@ public class G22HW1 {
                 });
 
         //Sort pairs by value
-        product=product.sortBy(_._2,false)
+        product=product.sortBy(_._2,false);
 
 
         // CREATION OF OUTPUT FILE: first T Product
