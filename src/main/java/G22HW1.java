@@ -54,7 +54,7 @@ public class G22HW1 {
         }
 
         // SPARK SETUP
-        SparkConf conf = new SparkConf(true).setAppName("G22HW1");
+        SparkConf conf = new SparkConf(true).setAppName("G22HW1").setMaster("local[*]");
         JavaSparkContext sc = new JavaSparkContext(conf);
         sc.setLogLevel("WARN");
 
@@ -67,7 +67,6 @@ public class G22HW1 {
         JavaRDD<String> RawData = sc.textFile(args[2]).repartition(K).cache();
 
         // SET GLOBAL VARIABLES
-        String outputFileName = "output_20K.txt";
         JavaPairRDD<String, Long> product;
 
 
@@ -117,32 +116,11 @@ public class G22HW1 {
         product=product.sortBy(_._2,false);
 
 
-        // CREATION OF OUTPUT FILE: first T Product
-        try {
-            File outputFile = new File(outputFileName);
-            if (outputFile.createNewFile()) {
-                System.out.println("File created: " + outputFile.getName());
-            } else {
-                System.out.println("File already exists. It will be overwritten");
-            }
-        } catch (IOException e) {
-            System.out.println("An error occurred.");
-            e.printStackTrace();
-        }
-        try {
-            //DELETING THE CONTENT OF THE FILE IF IT ALREADY EXISTS
-            new FileWriter(outputFileName, false).close();
-            FileWriter myWriter = new FileWriter(outputFileName, true);
-            // FIRST LINE OF THE FILE
-            myWriter.write("INPUT PARAMETERS: K="+K+" T="+T+" file="+args[2]+"\n");
-            // WRITE HERE THE FIRST T PRODUCT WITH THE LARGEST MAXIMUM NORMALIZED RATING (ONE PER LINE)
+        // PRINTING THE OUTPUT: first T Product
+        // FIRST LINE OF THE OUTPUT
+        System.out.println("INPUT PARAMETERS: K="+K+" T="+T+" file="+args[2]+"\n");
+        // WRITE HERE THE FIRST T PRODUCT WITH THE LARGEST MAXIMUM NORMALIZED RATING (ONE PER LINE)
 
-            myWriter.close();
-            System.out.println("Successfully wrote to the file.");
-        } catch (IOException e) {
-            System.out.println("An error occurred.");
-            e.printStackTrace();
-        }
 
 
     }
