@@ -67,42 +67,61 @@ public class G22HW1 {
         JavaRDD<String> RawData = sc.textFile(args[2]).repartition(K).cache();
 
         // SET GLOBAL VARIABLES
-        JavaPairRDD<String, Long> product;
-
+        JavaPairRDD<String, Long> normalizedRating;
 
         //MAPREDUCE ALGORITHM
-        product = RawData
+        normalizedRating = RawData
                 //R1 MAP PHASE: copy of RawData in (UserID, RATE)
                 .flatMapToPair((document) -> {
                     String[] tokens = document.split(",");
-                    HashMap<String, Long> reviews = new HashMap<>();
-                    ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-                    System.out.println(tokens[0]);
-                    for (String token : tokens) {
-                        reviews.put(token, 1L + reviews.getOrDefault(token, 0L));
-                    }
-                    for (Map.Entry<String, Long> e : reviews.entrySet()) {
-                        pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+                    ArrayList<Tuple2<String, Tuple2<String, Long>>> pairs = new ArrayList<>();
+                    for(int i = 0; i < tokens.length; i = i+4){
+                        pairs.add(new Tuple2<> (tokens[i+1], new Tuple2<String, Long>(tokens[i], Long.parseLong(tokens[i+2]))));
                     }
                     return pairs.iterator();
                 })
                 //R1 REDUCE PHASE: compute avg for each UserID (no repetition)
                 .mapPartitionsToPair((element) -> {
-                    HashMap<String, Long> counts = new HashMap<>();
+
+                    // element -> Tuple2 (UserID, Tuple2<ProductID, Rating>)
+
+                    HashMap<String, Long[]> countAverage = new HashMap<>();
+                    HashMap<String, Tuple2<String, Long>> avgMap = new HashMap<>();
+
+                    Tuple2<String, Long> temp;
+                    Long[] newPair = new Long[2];
+                    Long[] oldPair;
+
+                    // avgMap -> (ProductID, [UserID, rating])
+                    // countAverage -> (UserID, [sumRating, numRating])
+
                     while (element.hasNext()){
-                        Tuple2<String, Long> tuple = element.next();
-                        counts.put(tuple._1(), tuple._2() + counts.getOrDefault(tuple._1(), 0L));
+                        Tuple2<String, Tuple2<String, Long>> tuple = element.next();
+                        temp = tuple._2();
+                        newPair[0] = temp._2();
+                        oldPair = countAverage.getOrDefault(tuple._1(), new Long[]{0L, 0L});
+                        newPair[1] = 1L + oldPair[1];
+                        countAverage.put(tuple._1(), newPair);
+                        avgMap.put(temp._1(), new Tuple2<>(tuple._1(), temp._2()));
                     }
+
                     ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
-                    for (Map.Entry<String, Long> e : counts.entrySet()) {
-                        pairs.add(new Tuple2<>(e.getKey(), e.getValue()));
+                    Long avg = 0L;
+                    for (Map.Entry<String, Tuple2<String, Long>> e : avgMap.entrySet()) {
+                        String productId = e.getKey();
+                        Tuple2<String, Long> tuple = e.getValue();
+                        String userID = tuple._1();
+                        Long rating = tuple._2();
+                        oldPair = countAverage.get(userID);
+                        avg = oldPair[0] / oldPair[1];
+                        pairs.add(new Tuple2<>(productId, rating - avg));
                     }
                     return pairs.iterator();
-                })
+                });
                 //R2 MAP PHASE: normalize (ProductID, NormRate)
 
                 //R2 REDUCE PHASE: compute max NormRate for each ProductID (no repetition ID)
-                .groupByKey()
+                /*.groupByKey()
                 .mapValues((rate) -> {
                     long max = 0;
                     for (long c : rate) {
@@ -110,10 +129,11 @@ public class G22HW1 {
                                 max=c;
                     }
                     return max;
-                });
+                });*/
 
         //Sort pairs by value
-        product=product.sortBy(_._2,false);
+
+        //product=product.sortBy(_._2,false);
 
 
         // PRINTING THE OUTPUT: first T Product
