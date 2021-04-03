@@ -54,7 +54,7 @@ public class G22HW1 {
         }
 
         // SPARK SETUP
-        SparkConf conf = new SparkConf(true).setAppName("G22HW1").setMaster("local[*]");
+        SparkConf conf = new SparkConf(true).setAppName("G22HW1");
         JavaSparkContext sc = new JavaSparkContext(conf);
         sc.setLogLevel("WARN");
 
@@ -67,81 +67,69 @@ public class G22HW1 {
         JavaRDD<String> RawData = sc.textFile(args[2]).repartition(K).cache();
 
         // SET GLOBAL VARIABLES
-        JavaPairRDD<String, Long> normalizedRating;
+        JavaPairRDD<String, Float> normalizedRating;
 
         //MAPREDUCE ALGORITHM
         normalizedRating = RawData
                 //R1 MAP PHASE: copy of RawData in (UserID, RATE)
                 .flatMapToPair((document) -> {
                     String[] tokens = document.split(",");
-                    ArrayList<Tuple2<String, Tuple2<String, Long>>> pairs = new ArrayList<>();
+                    // pairs -> (UserID, (ProductID, Rating))
+                    ArrayList<Tuple2<String, Tuple2<String, Float>>> pairs = new ArrayList<>();
                     for(int i = 0; i < tokens.length; i = i+4){
-                        Double d = Double.parseDouble(tokens[i+2]);
-                        pairs.add(new Tuple2<> (tokens[i+1], new Tuple2<String, Long>(tokens[i], d.longValue())));
+                        pairs.add(new Tuple2<> (tokens[i+1], new Tuple2<>(tokens[i], Float.parseFloat(tokens[i+2]))));
                     }
                     return pairs.iterator();
                 })
                 //R1 REDUCE PHASE: compute avg for each UserID (no repetition)
-                .mapPartitionsToPair((element) -> {
+                .groupByKey()
+                .flatMapToPair((element) -> {
+
+                    ArrayList<Tuple2<String, Float>> pairs = new ArrayList<>();
+                    Iterator<Tuple2<String, Float>> list = element._2().iterator();
+
+                    Float sumOfRatings = 0F;
+                    Float numOfRatings = 0F;
+                    Float avg;
 
                     // element -> Tuple2 (UserID, Tuple2<ProductID, Rating>)
-
-                    // countAverage -> (UserID, Long[sumRating, numRating])
-                    HashMap<String, Long[]> countAverage = new HashMap<>();
-                    // avgMap -> (ProductID, Tuple2[UserID, rating])
-                    HashMap<String, Tuple2<String, Long>> avgMap = new HashMap<>();
-
-
-                    while (element.hasNext()){
-                        // newPair -> (Rating, numOfRating)
-                        Long sumOfRatings;
-                        Long numOfRatings = 1L;
+                    while (list.hasNext()){
 
                         // tuple -> (UserID, Tuple2<ProductID, Rating>)
-                        Tuple2<String, Tuple2<String, Long>> tuple = element.next();
-                        // temp -> (ProductID, Rating)
-                        Tuple2<String, Long> temp = tuple._2();
+                        Tuple2<String, Float> tuple = list.next();
 
-                        Long[] oldPair = countAverage.getOrDefault(tuple._1(), new Long[]{0L, 0L});
-                        sumOfRatings = temp._2() + oldPair[0];
-                        numOfRatings = 1L + oldPair[1];
-                        countAverage.put(tuple._1(), new Long[]{sumOfRatings, numOfRatings});
-                        avgMap.put(temp._1(), new Tuple2<>(tuple._1(), temp._2()));
+                        Float rating = tuple._2();
+
+                        sumOfRatings = sumOfRatings + rating;
+                        numOfRatings = numOfRatings + 1F;
                     }
 
-                    ArrayList<Tuple2<String, Long>> pairs = new ArrayList<>();
+                    avg = sumOfRatings/numOfRatings;
+                    list=element._2().iterator();
 
-                    for (Map.Entry<String, Tuple2<String, Long>> e : avgMap.entrySet()) {
-                        String productId = e.getKey();
-                        Tuple2<String, Long> tuple = e.getValue();
-                        String userID = tuple._1();
-                        Long rating = tuple._2();
+                    while (list.hasNext()){
 
-                        Long[] oldPair = countAverage.get(userID);
-                        Long avg = oldPair[0] / oldPair[1];
-                        pairs.add(new Tuple2<>(productId, rating - avg));
+                        // tuple -> (UserID, Tuple2<ProductID, Rating>)
+                        Tuple2<String, Float> tuple = list.next();
+
+                        String productID = tuple._1();
+                        Float normRating = tuple._2() - avg;
+
+                        pairs.add(new Tuple2<>(productID, normRating));
                     }
-                    return pairs.iterator();
+
+                   return pairs.iterator();
                 });
+
+
         normalizedRating.foreach(data -> {
-            System.out.println("ProductID="+data._1() + " Rating=" + data._2());
+
+                System.out.println("UserID="+data._1() + " avg=" + data._2());
         });
         //R2 MAP PHASE: normalize (ProductID, NormRate)
 
-                //R2 REDUCE PHASE: compute max NormRate for each ProductID (no repetition ID)
-                /*.groupByKey()
-                .mapValues((rate) -> {
-                    long max = 0;
-                    for (long c : rate) {
-                        if (c>max)
-                                max=c;
-                    }
-                    return max;
-                });*/
 
         //Sort pairs by value
-
-        //product=product.sortBy(_._2,false);
 
 
         // PRINTING THE OUTPUT: first T Product
