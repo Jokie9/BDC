@@ -2,12 +2,9 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.storage.StorageLevel;
+
 import scala.Tuple2;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
@@ -144,8 +141,6 @@ public class G22HW1 {
         System.out.println("INPUT PARAMETERS: K="+K+" T="+T+" file="+args[2]+"\n");
         System.out.println("OUTPUT");
         // PRINTING THE FIRST T PRODUCT WITH THE LARGEST MAXIMUM NORMALIZED RATING (ONE PER LINE)
-        list.forEach(data -> {
-            System.out.println("Product "+data._2() + " maxNormRating " + data._1());
-        });
+        list.forEach(data -> System.out.println("Product "+data._2() + " maxNormRating " + data._1()));
     }
 }
