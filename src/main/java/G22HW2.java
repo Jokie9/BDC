@@ -44,17 +44,17 @@ public class G22HW2 {
         // SET GLOBAL VARIABLES
         //number of partitions
         int p = 5;
-        int[] clusterSizes = new int[p];
-        Broadcast<int[]> sharedClusterSizes = sc.broadcast(clusterSizes);
+        ArrayList<Integer> clusterSizes = new ArrayList<>();
+        Broadcast<ArrayList<Integer>> sharedClusterSizes = sc.broadcast();
         Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast();
         int exactSilhSample = 0;
         int approxSilhFull = 0;
 
         // Subdivide RDD into p random partitions
-        JavaPairRDD<Vector, Integer> RawData = fullClustering.repartition(p).cache();
+        JavaPairRDD<Vector, Integer> Data = fullClustering.repartition(p).cache();
 
         //SAVE CLUSTERS SIZE
-
+        sharedClusterSizes = Data.countByValue();
 
         //EXTRACT SAMPLE OF THE INPUT CLUSTERING
 
@@ -62,6 +62,24 @@ public class G22HW2 {
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
+        AproxSil = Data
+                //MAP PHASE: empty
+                //REDUCE PHASE: compute point silhouette respect its cluster
+                .groupByKey()
+                .flatMapToPair((element) -> {
+
+                    ArrayList<Tuple2<Vector, Integer>> pairs = new ArrayList<>(); //pairs (point, ApproxSilhouette)
+                    //Iterator<Tuple2<Vector, Integer>> list = element._2().iterator();
+
+                    int approxSil;
+
+                        pairs.add(new Tuple2<>(point, approxSil));
+                    }
+
+                    return pairs.iterator();
+                });
+                //compute average silhouette
+
         long endA = System.currentTimeMillis();
 
 
