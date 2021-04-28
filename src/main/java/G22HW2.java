@@ -1,3 +1,4 @@
+import com.twitter.chill.Tuple1LongSerializer;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -36,25 +37,26 @@ public class G22HW2 {
         // Read input file
         JavaPairRDD<Vector,Integer> fullClustering = sc.textFile(args[0]).mapToPair(x -> strToTuple(x));
         // Read number of clusters
-        int k = Integer.parseInt(args[2]);
+        int k = Integer.parseInt(args[1]);
         // Read sample size of cluster
-        int t = Integer.parseInt(args[3]);
+        int t = Integer.parseInt(args[2]);
 
 
         // SET GLOBAL VARIABLES
         //number of partitions
-        int p = 5;
-        ArrayList<Integer> clusterSizes = new ArrayList<>();
-        Broadcast<ArrayList<Integer>> sharedClusterSizes = sc.broadcast();
-        Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast();
+        int p = 8;
+
+        Broadcast<ArrayList<Tuple2<Integer, Long>>> sharedClusterSizes = sc.broadcast(new ArrayList<Tuple2<Integer, Long>>());
+
+        //Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast();
         int exactSilhSample = 0;
         int approxSilhFull = 0;
 
         // Subdivide RDD into p random partitions
-        JavaPairRDD<Vector, Integer> Data = fullClustering.repartition(p).cache();
+        JavaPairRDD<Vector, Integer> data = fullClustering.repartition(p).cache();
 
         //SAVE CLUSTERS SIZE
-        sharedClusterSizes = Data.countByValue();
+        data.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
 
         //EXTRACT SAMPLE OF THE INPUT CLUSTERING
 
@@ -62,7 +64,7 @@ public class G22HW2 {
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
-        AproxSil = Data
+        /*AproxSil = data
                 //MAP PHASE: empty
                 //REDUCE PHASE: compute point silhouette respect its cluster
                 .groupByKey()
@@ -74,12 +76,12 @@ public class G22HW2 {
                     int approxSil;
 
                         pairs.add(new Tuple2<>(point, approxSil));
-                    }
+
 
                     return pairs.iterator();
                 });
                 //compute average silhouette
-
+*/
         long endA = System.currentTimeMillis();
 
 
