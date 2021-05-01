@@ -15,7 +15,6 @@ import java.util.*;
 
 // GROUP 22 : FEDERICA VETTOR, GABRIELE ZANATTA
 
-
 public class G22HW2 {
     public static void main(String[] args) throws IOException {
 
@@ -43,14 +42,20 @@ public class G22HW2 {
 
 
         // SET GLOBAL VARIABLES
+        JavaPairRDD<Vector, Tuple2<Float, Float>> approxParamR1;
+        JavaPairRDD<Vector, Float> approxParamR2;
+        JavaPairRDD<Vector, Float> approxSilh;
         //number of partitions
         int p = 8;
+        //coeficients
+        float ap = 0;
+        float bp = 0;
 
         Broadcast<ArrayList<Tuple2<Integer, Long>>> sharedClusterSizes = sc.broadcast(new ArrayList<Tuple2<Integer, Long>>());
+        Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast(new ArrayList<Tuple2<Vector, Integer>>());
 
-        //Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast();
-        int exactSilhSample = 0;
-        int approxSilhFull = 0;
+        float exactSilhSample = 0;
+        float approxSilhFull = 0;
 
         // Subdivide RDD into p random partitions
         JavaPairRDD<Vector, Integer> data = fullClustering.repartition(p).cache();
@@ -59,29 +64,60 @@ public class G22HW2 {
         data.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
 
         //EXTRACT SAMPLE OF THE INPUT CLUSTERING
+        //sample for each cluster
+        /*clusteringSample = data
+                     extract.....
+
+         */
 
 
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
-        /*AproxSil = data
-                //MAP PHASE: empty
-                //REDUCE PHASE: compute point silhouette respect its cluster
-                .groupByKey()
-                .flatMapToPair((element) -> {
-
-                    ArrayList<Tuple2<Vector, Integer>> pairs = new ArrayList<>(); //pairs (point, ApproxSilhouette)
-                    //Iterator<Tuple2<Vector, Integer>> list = element._2().iterator();
-
-                    int approxSil;
-
-                        pairs.add(new Tuple2<>(point, approxSil));
-
-
+        approxParamR1 = clusteringSample
+                //R1 Map Phase: compute sum for ap and bp for each point
+                .flatMapValues((element) -> {
+                    ArrayList<Tuple2<Vector, Tuple2<Float, Float>>> pairs = new ArrayList<>(); //pairs (point, sum_ap, sum_bp )
+                    Iterator<Tuple2<Vector, Integer>> p = element.iterator();
+                    float sumA = 0;
+                    float sumB= 0;
+                    while (p.hasNext())
+                    {
+                        Iterator<Tuple2<Vector, Integer>> d = element.iterator();
+                        while (d.hasNext()) {
+                            if (p.next()._2().equals(d.next()._2()))
+                                sumA = (float) (sumA + Vectors.sqdist(p.next()._1(), d.next()._1()));
+                            //manca sumB che è il minimo della somma delle distanze tra p e tutti gli altri punti per ogni cluster
+                        }
+                        pairs.add(new Tuple2<Vector, Tuple2<Float, Float>>(p.next()._1(), sumA, sumB));
+                    }
                     return pairs.iterator();
                 });
-                //compute average silhouette
-*/
+                //R1 Reduce: compute ap and bp
+                .flatMapValues((coef) -> {
+                    //ap= 1/|Ci| * |Ci|/t * sum(vectors.sqdist(p,ti))   for each ti in sample for Ci
+                    //bp= min ( 1/|Cj| * |Cj|/t * sum(vectors.sqdist(p,ti)) )  for each ti in sample for Cj different to Ci
+
+                 });
+
+        approxParamR2 = approxParamR1
+                //R2 Map: empty
+                //R2 Reduce: for each point compute sp
+                .flatMapValues((sil) -> {
+                    float approxSil = 0;
+                    if (ap>bp)
+                        approxSil = (bp-ap) / ap;
+                    else
+                        approxSil = (bp-ap)/ bp;
+
+                    pairs.add(new Tuple2<>(point, approxSil));
+                });
+
+
+                //compute total approx Silhouette
+                approxSilhFull = sumOfSilh/(t*k);
+
+        //end code
         long endA = System.currentTimeMillis();
 
 
@@ -117,3 +153,4 @@ public class G22HW2 {
     }
 
 }
+
