@@ -45,14 +45,15 @@ public class G22HW2 {
         JavaPairRDD<Vector, Tuple2<Float, Float>> approxParamR1;
         JavaPairRDD<Vector, Float> approxParamR2;
         JavaPairRDD<Vector, Float> approxSilh;
+        JavaPairRDD<Vector, Integer> temp;
         //number of partitions
         int p = 8;
-        //coeficients
-        float ap = 0;
-        float bp = 0;
+
+
+        Random r = new Random();
 
         Broadcast<ArrayList<Tuple2<Integer, Long>>> sharedClusterSizes = sc.broadcast(new ArrayList<Tuple2<Integer, Long>>());
-        Broadcast<ArrayList<Tuple2<Vector, Integer>>> clusteringSample = sc.broadcast(new ArrayList<Tuple2<Vector, Integer>>());
+        Broadcast<List<Tuple2<Vector, Integer>>> clusteringSample;
 
         float exactSilhSample = 0;
         float approxSilhFull = 0;
@@ -62,19 +63,57 @@ public class G22HW2 {
 
         //SAVE CLUSTERS SIZE
         data.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
+        sharedClusterSizes.value().forEach(element ->{
+            System.out.println(element);
+        });
 
         //EXTRACT SAMPLE OF THE INPUT CLUSTERING
-        //sample for each cluster
-        /*clusteringSample = data
-                     extract.....
+        temp = fullClustering.flatMapToPair(element -> {
+            ArrayList<Tuple2<Vector, Integer>> array = new ArrayList();
+            Long size = sharedClusterSizes.value().get(element._2())._2();
+            Double f = r.nextDouble();
 
-         */
+            if( f < ((double)t/size))
+                array.add(element);
+
+            return array.iterator();
+        });
+        clusteringSample = sc.broadcast(temp.collect());
+
+        System.out.println("Full sample size = "+clusteringSample.getValue().size()+" \t Max sample size = "+t*k);
+
+
+        JavaPairRDD<Integer, Vector> temp2 = fullClustering.flatMapToPair( element -> {
+            ArrayList<Tuple2<Integer, Vector>> array = new ArrayList();
+            array.add(new Tuple2<>(element._2(), element._1()));
+            return array.iterator();
+        })
+        .groupByKey()
+        .flatMapToPair(element -> {
+            ArrayList<Tuple2<Integer, Vector>> array = new ArrayList();
+            Long size = sharedClusterSizes.value().get(element._1())._2();
+            Float ti = Float.min(size, t);
+
+            if( ti == Float.parseFloat(size.toString())) {
+                for (Vector e : element._2()) {
+                    array.add(new Tuple2<>(element._1(), e));
+                }
+            }else{
+                for (Vector e : element._2()) {
+                    Float f = r.nextFloat();
+                    if (f < (ti / size)) {
+                        array.add(new Tuple2<>(element._1(), e));
+                    }
+                }
+            }
+            return array.iterator();
+        });
 
 
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
-        approxParamR1 = clusteringSample
+       /* approxParamR1 = clusteringSample
                 //R1 Map Phase: compute sum for ap and bp for each point
                 .flatMapValues((element) -> {
                     ArrayList<Tuple2<Vector, Tuple2<Float, Float>>> pairs = new ArrayList<>(); //pairs (point, sum_ap, sum_bp )
@@ -116,7 +155,7 @@ public class G22HW2 {
 
                 //compute total approx Silhouette
                 approxSilhFull = sumOfSilh/(t*k);
-
+    */
         //end code
         long endA = System.currentTimeMillis();
 
