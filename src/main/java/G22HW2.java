@@ -1,4 +1,5 @@
 
+import org.apache.avro.hadoop.io.AvroKeyValue;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -7,6 +8,8 @@ import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
 
 import scala.Tuple2;
+import shapeless.Tuple;
+
 import java.util.ArrayList;
 
 import java.io.IOException;
@@ -33,7 +36,7 @@ public class G22HW2 {
 
         // INPUT READING
         // Read input file
-        JavaPairRDD<Vector,Integer> fullClustering = sc.textFile(args[0]).mapToPair(x -> strToTuple(x));
+        JavaPairRDD<Vector,Integer> data = sc.textFile(args[0]).mapToPair(x -> strToTuple(x));
         // Read number of clusters
         int k = Integer.parseInt(args[1]);
         // Read sample size of cluster
@@ -56,167 +59,147 @@ public class G22HW2 {
         Long numberOfPoints;
 
         // Subdivide RDD into p random partitions
-        JavaPairRDD<Vector, Integer> data = fullClustering.repartition(p).cache();
+        JavaPairRDD<Vector, Integer> fullClustering = data.repartition(p).cache();
 
         //SAVE CLUSTERS SIZE
-        data.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
-
+        fullClustering.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
 
         //EXTRACT SAMPLE OF THE INPUT CLUSTERING
-        temp = fullClustering.flatMapToPair(element -> {
+        clusteringSample = sc.broadcast(fullClustering.mapPartitionsToPair(element -> {
             ArrayList<Tuple2<Vector, Integer>> array = new ArrayList();
-            Long size = sharedClusterSizes.value().get(element._2())._2();
-            Random r = new Random();
-            Double f = r.nextDouble();
+            while(element.hasNext()){
+                Tuple2<Vector, Integer> tuple = element.next();
+                Long size = sharedClusterSizes.value().get(tuple._2())._2();
+                Random r = new Random();
+                Double f = r.nextDouble();
 
-            if( f < ((double)t/size))
-                array.add(element);
+                if( f < ((double)t/size))
+                    array.add(tuple);
 
-            return array.iterator();
-        });
-        clusteringSample = sc.broadcast(temp.collect());
-
-
-        JavaPairRDD<Integer, Tuple2<Integer, Vector>> temp2 = fullClustering.flatMapToPair( element -> {
-            ArrayList<Tuple2<Integer, Vector>> array = new ArrayList();
-            array.add(new Tuple2<>(element._2(), element._1()));
-            return array.iterator();
-        })
-        .groupByKey()
-        .flatMapToPair(element -> {
-            ArrayList<Tuple2<Integer, Tuple2<Integer, Vector>>> array = new ArrayList();
-            Long size = sharedClusterSizes.value().get(element._1())._2();
-            Float ti = Float.min(size, t);
-            Random r = new Random();
-
-
-            if( ti == Float.parseFloat(size.toString())) {
-                for (Vector e : element._2()) {
-                    array.add(new Tuple2<>(0, new Tuple2<>(element._1(), e)));
-                }
-            }else{
-                for (Vector e : element._2()) {
-                    Float f = r.nextFloat();
-                    if (f < (ti / size)) {
-                        array.add(new Tuple2<>(0, new Tuple2<>(element._1(), e)));
-                    }
-                }
             }
             return array.iterator();
-        });
+        }).collect());
 
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
-        JavaPairRDD<Integer, Double> temp3 = temp2.groupByKey()
-        .flatMapToPair(element->{
+        JavaPairRDD<Integer, Double> temp3 = fullClustering.mapPartitionsToPair(element->{
             ArrayList<Tuple2<Integer, Double>> array = new ArrayList();
+
             Double[] sums = new Double[k];
             Double[] fractions = new Double[k];
             Double ap;
             Double bp;
             Double sp;
-            Integer cluster1;
-            Vector v1;
+            Double silhoutte = 0d;
+            Integer fullClusterPointID;
+            Vector fullClusterPoint;
 
             for(int i = 0; i < k; i++)
                 fractions[i] = 1/Double.min(t, sharedClusterSizes.value().get(i)._2());
 
-            for(Tuple2<Integer, Vector> tuple1 : element._2()){
-                cluster1 = tuple1._1();
-                v1 = tuple1._2();
+            while(element.hasNext()){
+                Tuple2<Vector, Integer> tuple = element.next();
+                fullClusterPoint = tuple._1();
+                fullClusterPointID = tuple._2();
                 for(int i = 0; i<k; i++)
                     sums[i] = 0d;
-                for(Tuple2<Integer, Vector> tuple2 : element._2()){
-                    Integer cluster2 = tuple2._1();
-                    Vector v2 = tuple2._2();
-                    sums[cluster2] = sums[cluster2] + Vectors.sqdist(v1,v2);
+
+                Iterator<Tuple2<Vector, Integer>> clusteringSampleIter = clusteringSample.value().iterator();
+                while(clusteringSampleIter.hasNext()){
+                    Tuple2<Vector, Integer> sampleTuple = clusteringSampleIter.next();
+                    Vector sampleClusterPoint = sampleTuple._1();
+                    Integer sampleClusterPointID = sampleTuple._2();
+                    sums[sampleClusterPointID] = sums[sampleClusterPointID] + Vectors.sqdist(fullClusterPoint, sampleClusterPoint);
                 }
+
                 for(int i = 0; i<k; i++)
                     sums[i] = sums[i]*fractions[i];
 
-                ap = sums[cluster1];
-                if(cluster1 == 0)
-                    bp = sums[1];
-                else
-                    bp = sums[0];
+                ap = sums[fullClusterPointID];
 
+                bp=Double.MAX_VALUE;
                 for(int i = 0;i < k; i++){
-                    if(i != cluster1 && bp > sums[i])
+                    if(i != fullClusterPointID && bp > sums[i])
                         bp = sums[i];
                 }
 
                 sp = (bp - ap)/Double.max(ap,bp);
 
-                array.add(new Tuple2<>(0, sp));
+                silhoutte = silhoutte + sp;
+
             }
 
+            array.add(new Tuple2<>(0, silhoutte));
             return array.iterator();
         });
 
-        numberOfPoints = temp3.count();
-        List<Tuple2<Integer,Double>> list = temp3.collect();
-        Iterator<Tuple2<Integer, Double>> iter = list.iterator();
+        Iterator<Tuple2<Integer, Double>> iter = temp3.collect().iterator();
         while(iter.hasNext()){
-            Double d = iter.next()._2();
-            approxSilhFull = approxSilhFull + d;
+            approxSilhFull = approxSilhFull + iter.next()._2();
         }
 
-        approxSilhFull = approxSilhFull/numberOfPoints;
+        approxSilhFull = approxSilhFull/fullClustering.count();
+
         //end code
         long endA = System.currentTimeMillis();
 
+        Double[] sampleClusterSize = new Double[k];
+        for(int i=0; i<k; i++)
+            sampleClusterSize[i]=0d;
 
-
+        Iterator<Tuple2<Vector, Integer>> iteratorSample = clusteringSample.value().iterator();
+        while(iteratorSample.hasNext()){
+            Tuple2<Vector, Integer> tuple = iteratorSample.next();
+            sampleClusterSize[tuple._2()]++;
+        }
 
         //EXACT AVERAGE SILHOUETTE COEFFICIENT
         long startE = System.currentTimeMillis();
         //code
-        List<Tuple2<Vector, Integer>> fullList = fullClustering.collect();
-        Iterator<Tuple2<Vector, Integer>> fullIter = fullList.iterator();
-
-        Double[] sums = new Double[k];
-        Double[] fractions = new Double[k];
-        Double sp = 0d;
-        for(int i = 0; i < k; i++)
-            fractions[i] = 1/Double.min(t, sharedClusterSizes.value().get(i)._2());
-
-        while(fullIter.hasNext()){
+        Iterator<Tuple2<Vector,Integer>> iter1 = clusteringSample.value().iterator();
+        while(iter1.hasNext()){
+            Tuple2<Vector, Integer> tuple1 = iter1.next();
+            Vector clusterPoint1 = tuple1._1();
+            Integer clusterID1 = tuple1._2();
+            Double[] sums = new Double[k];
             Double ap;
             Double bp;
-            Tuple2<Vector, Integer> tuple1 = fullIter.next();
-            Integer cluster1 = tuple1._2();
-            Vector v1 = tuple1._1();
-            Iterator<Tuple2<Vector, Integer>> fIter = fullList.iterator();
+            Double sp;
 
             for(int i = 0; i<k; i++)
                 sums[i] = 0d;
 
-            while(fIter.hasNext()){
-                Tuple2<Vector, Integer> tuple2 = fIter.next();
-                Integer cluster2 = tuple2._2();
-                Vector v2 = tuple2._1();
-                sums[cluster2] = sums[cluster2] + Vectors.sqdist(v1,v2);
+            Iterator<Tuple2<Vector,Integer>> iter2 = clusteringSample.value().iterator();
+            while(iter2.hasNext()){
+                Tuple2<Vector, Integer> tuple2 = iter2.next();
+                Vector clusterPoint2 = tuple2._1();
+                Integer clusterID2 = tuple2._2();
+                sums[clusterID2] = sums[clusterID2] + Vectors.sqdist(clusterPoint1, clusterPoint2);
             }
+
             for(int i = 0; i<k; i++)
-                sums[i] = sums[i]*fractions[i];
+                sums[i] = sums[i]/sampleClusterSize[i];
 
-            ap = sums[cluster1];
-            if(cluster1 == 0)
-                bp = sums[1];
-            else
-                bp = sums[0];
+            ap = sums[clusterID1];
 
+            bp=Double.MAX_VALUE;
             for(int i = 0;i < k; i++){
-                if(i != cluster1 && bp > sums[i])
+                if(i != clusterID1 && bp > sums[i])
                     bp = sums[i];
             }
+            sp = (bp - ap)/Double.max(ap,bp);
 
-            sp = sp + ((bp - ap)/Double.max(ap,bp));
-
+            exactSilhSample = exactSilhSample + sp;
         }
 
-        exactSilhSample = sp/fullList.size();
+
+        Double clusterSampleSize = 0d;
+
+        for(int i = 0; i< sharedClusterSizes.value().size(); i++)
+            clusterSampleSize = clusterSampleSize + sampleClusterSize[i];
+
+        exactSilhSample = exactSilhSample/clusterSampleSize;
 
         //end code
         long endE = System.currentTimeMillis();
