@@ -80,6 +80,9 @@ public class G22HW2 {
             return array.iterator();
         }).collect());
 
+        sharedClusterSizes.value().forEach(element -> System.out.println(element));
+
+
         //APPROXIMATE AVERAGE SILHOUETTE COEFFICIENT
         long startA = System.currentTimeMillis();
         //code
@@ -94,9 +97,15 @@ public class G22HW2 {
             Double silhoutte = 0d;
             Integer fullClusterPointID;
             Vector fullClusterPoint;
+            Long[] clusterSize = new Long[k];
+
+            //fix per lunghezza cluster sparsa
+            for(int i = 0; i < k; i++){
+                clusterSize[sharedClusterSizes.value().get(i)._1()] =  sharedClusterSizes.value().get(i)._2();
+            }
 
             for(int i = 0; i < k; i++)
-                fractions[i] = 1/Double.min(t, sharedClusterSizes.value().get(i)._2());
+                fractions[i] = 1/Double.min(t, clusterSize[i]);
 
             while(element.hasNext()){
                 Tuple2<Vector, Integer> tuple = element.next();
@@ -196,7 +205,7 @@ public class G22HW2 {
 
         Double clusterSampleSize = 0d;
 
-        for(int i = 0; i< sharedClusterSizes.value().size(); i++)
+        for(int i = 0; i< k; i++)
             clusterSampleSize = clusterSampleSize + sampleClusterSize[i];
 
         exactSilhSample = exactSilhSample/clusterSampleSize;
