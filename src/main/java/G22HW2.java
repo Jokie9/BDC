@@ -57,8 +57,8 @@ public class G22HW2 {
             JavaPairRDD<Vector, Integer> fullClustering = data.repartition(p).cache();
 
             //SAVE CLUSTERS SIZE
-            //sort the order of the clusters
             fullClustering.values().countByValue().forEach((key,value) -> sharedClusterSizes.value().add(new Tuple2<>(key, value)));
+            //sort the order of the clusters
             sharedClusterSizes.value().sort((o1, o2) -> {
                 if(o1._1() < o2._1())
                     return -1;
